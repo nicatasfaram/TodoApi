@@ -4,7 +4,7 @@ public static class TodoItemsEndpoints
 {
     public static void RegisterTodoItemsEndpoints(this WebApplication app)
     {
-        var todoItems = app.MapGroup("/todoitems");
+        var todoItems = app.MapGroup("/todoitems").WithTags("Todo Items");
 
         todoItems.MapGet("/", GetAllTodos);
         todoItems.MapGet("/complete", GetCompleteTodos);
@@ -12,72 +12,72 @@ public static class TodoItemsEndpoints
         todoItems.MapPost("/", CreateTodo);
         todoItems.MapPut("/{id}", UpdateTodo);
         todoItems.MapDelete("/{id}", DeleteTodo);
+    }
 
-        static async Task<IResult> GetAllTodos (TodoDb db) 
-        { 
-            return TypedResults.Ok(await db.Todos
-                .AsNoTracking()
-                .Select(x => new TodoItemDTO(x))
-                .ToArrayAsync());
-        }
+    static async Task<IResult> GetAllTodos(TodoDb db)
+    {
+        return TypedResults.Ok(await db.Todos
+            .AsNoTracking()
+            .Select(x => new TodoItemDTO(x))
+            .ToArrayAsync());
+    }
 
-        static async Task<IResult> GetCompleteTodos(TodoDb db)
+    static async Task<IResult> GetCompleteTodos(TodoDb db)
+    {
+        return TypedResults.Ok(await db.Todos
+            .AsNoTracking()
+            .Where(t => t.IsComplete)
+            .Select(x => new TodoItemDTO(x))
+            .ToListAsync());
+    }
+
+    static async Task<IResult> GetTodo(int id, TodoDb db)
+    {
+        return await db.Todos.FindAsync(id)
+            is Todo todo
+                ? TypedResults.Ok(new TodoItemDTO(todo))
+                : TypedResults.NotFound();
+    }
+
+    static async Task<IResult> CreateTodo(TodoItemDTO todoItemDTO, TodoDb db)
+    {
+        var todo = new Todo
         {
-            return TypedResults.Ok(await db.Todos
-                .AsNoTracking()
-                .Where(t => t.IsComplete)
-                .Select(x => new TodoItemDTO(x))
-                .ToListAsync());
-        }
+            IsComplete = todoItemDTO.IsComplete,
+            Name = todoItemDTO.Name
+        };
 
-        static async Task<IResult> GetTodo(int id, TodoDb db)
+        db.Todos.Add(todo);
+        await db.SaveChangesAsync();
+
+        todoItemDTO = new TodoItemDTO(todo);
+
+        return TypedResults.Created($"/todoitems/{todoItemDTO.Id}", todoItemDTO);
+    }
+
+    static async Task<IResult> UpdateTodo(int id, TodoItemDTO todoItemDTO, TodoDb db)
+    {
+        var todo = await db.Todos.FindAsync(id);
+
+        if (todo is null) return TypedResults.NotFound();
+
+        todo.Name = todoItemDTO.Name;
+        todo.IsComplete = todoItemDTO.IsComplete;
+
+        await db.SaveChangesAsync();
+
+        return TypedResults.NoContent();
+    }
+
+    static async Task<IResult> DeleteTodo(int id, TodoDb db)
+    {
+        if (await db.Todos.FindAsync(id) is Todo todo)
         {
-            return await db.Todos.FindAsync(id)
-                is Todo todo
-                    ? TypedResults.Ok(new TodoItemDTO(todo))
-                    : TypedResults.NotFound();
-        }
-
-        static async Task<IResult> CreateTodo (TodoItemDTO todoItemDTO, TodoDb db)
-        {
-            var todo = new Todo 
-            {
-                IsComplete = todoItemDTO.IsComplete,
-                Name = todoItemDTO.Name
-            };
-
-            db.Todos.Add(todo);
+            db.Todos.Remove(todo);
             await db.SaveChangesAsync();
-
-            todoItemDTO = new TodoItemDTO(todo);
-
-            return TypedResults.Created($"/todoitems/{todoItemDTO.Id}", todoItemDTO);
-        }
-
-        static async Task<IResult>UpdateTodo (int id, TodoItemDTO todoItemDTO, TodoDb db)
-        {
-            var todo = await db.Todos.FindAsync(id);
-
-            if (todo is null) return TypedResults.NotFound();
-
-            todo.Name = todoItemDTO.Name;
-            todo.IsComplete = todoItemDTO.IsComplete;
-
-            await db.SaveChangesAsync();
-
             return TypedResults.NoContent();
         }
 
-        static async Task<IResult>DeleteTodo (int id, TodoDb db) 
-        {
-            if (await db.Todos.FindAsync(id) is Todo todo)
-            {
-                db.Todos.Remove(todo);
-                await db.SaveChangesAsync();
-                return TypedResults.NoContent();
-            }
-
-            return TypedResults.NotFound();
-        }
+        return TypedResults.NotFound();
     }
 }
